@@ -1,0 +1,1529 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Drone PID Stabilization Simulator — จำลองการปรับ PID ทรงตัวโดรน</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      color-scheme: dark;
+    }
+    body {
+      font-family: 'Inter', 'Noto Sans Thai', system-ui, -apple-system, sans-serif;
+      background-color: #090d16;
+      color: #e2e8f0;
+    }
+    .font-mono-num {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    /* Custom Range Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      border-radius: 9999px;
+      background: #1e293b;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #0f172a;
+      cursor: pointer;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+      transition: transform 0.12s ease, background-color 0.12s ease;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.12);
+    }
+    input[type="range"].slider-p::-webkit-slider-thumb { background: #38bdf8; }
+    input[type="range"].slider-i::-webkit-slider-thumb { background: #34d399; }
+    input[type="range"].slider-d::-webkit-slider-thumb { background: #c084fc; }
+    input[type="range"].slider-sp::-webkit-slider-thumb { background: #fbbf24; }
+    input[type="range"].slider-wind::-webkit-slider-thumb { background: #fb7185; }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #0f172a;
+      cursor: pointer;
+    }
+    input[type="range"].slider-p::-moz-range-thumb { background: #38bdf8; }
+    input[type="range"].slider-i::-moz-range-thumb { background: #34d399; }
+    input[type="range"].slider-d::-moz-range-thumb { background: #c084fc; }
+    input[type="range"].slider-sp::-moz-range-thumb { background: #fbbf24; }
+    input[type="range"].slider-wind::-moz-range-thumb { background: #fb7185; }
+  </style>
+</head>
+<body class="min-h-screen antialiased selection:bg-sky-500/30 selection:text-sky-200">
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 border-b border-slate-800/80 bg-[#0b1120]/90 backdrop-blur-md">
+    <div class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-6">
+      <div class="flex items-center gap-3">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-500/15 ring-1 ring-sky-400/30">
+          <svg class="h-5 w-5 text-sky-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 8h6M16 8h6M5 8v2M19 8v2M6 12l4-1h4l4 1M10 11v4l-2 3M14 11v4l2 3" />
+            <circle cx="12" cy="11" r="1.5" fill="currentColor" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-base font-bold tracking-tight text-white sm:text-lg">Drone PID Simulator</h1>
+          <p class="text-xs text-slate-400">จำลองการปรับจูน PID ควบคุมการทรงตัวของโดรนแบบเรียลไทม์</p>
+        </div>
+      </div>
+
+      <!-- Mode Switcher & Playback -->
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="inline-flex rounded-xl bg-slate-900 p-1 ring-1 ring-slate-800" role="tablist" aria-label="โหมดการจำลอง">
+          <button id="modeRollBtn" type="button" role="tab" aria-selected="true"
+            class="rounded-lg bg-sky-500/20 px-3 py-1.5 text-xs font-semibold text-sky-300 ring-1 ring-sky-400/40 transition">
+            มุมเอียง (Roll)
+          </button>
+          <button id="modeAltBtn" type="button" role="tab" aria-selected="false"
+            class="rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition">
+            ความสูง (Altitude)
+          </button>
+        </div>
+
+        <button id="pauseBtn" type="button"
+          class="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 ring-1 ring-slate-700 hover:bg-slate-700 transition">
+          <span id="pauseIcon">⏸</span>
+          <span id="pauseText">หยุดชั่วคราว</span>
+        </button>
+
+        <button id="resetSimBtn" type="button"
+          class="inline-flex items-center gap-1.5 rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 ring-1 ring-slate-700 hover:bg-slate-700 transition">
+          <span>↺</span>
+          <span>รีเซ็ตโดรน</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="mx-auto max-w-7xl px-4 py-5 sm:px-6">
+    <div class="grid grid-cols-1 gap-5 lg:grid-cols-12">
+
+      <!-- Left Column: Simulation Canvas + Live Graphs (7 cols) -->
+      <div class="flex flex-col gap-5 lg:col-span-7 xl:col-span-8">
+
+        <!-- Simulation Viewport Card -->
+        <section class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70 shadow-xl">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 px-4 py-2.5">
+            <div class="flex items-center gap-2">
+              <span id="statusDot" class="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></span>
+              <span id="viewportTitle" class="text-sm font-semibold text-slate-100">ห้องทดสอบทรงตัวมุมเอียง (Roll Axis)</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-slate-400">
+              <span class="hidden sm:inline">คลิกหรือลากบนโดรนเพื่อออกแรงผลักได้</span>
+              <span id="stabilityBadge" class="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30">
+                ทรงตัวดี
+              </span>
+            </div>
+          </div>
+
+          <div id="droneCanvasWrap" class="relative h-[300px] w-full cursor-grab active:cursor-grabbing sm:h-[340px]">
+            <canvas id="droneCanvas" class="block h-full w-full"></canvas>
+          </div>
+
+          <!-- Quick Action Bar under Viewport -->
+          <div class="flex flex-wrap items-center justify-between gap-2 border-t border-slate-800/80 bg-slate-950/50 px-4 py-2.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <button id="stepTestBtn" type="button"
+                class="rounded-lg bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 ring-1 ring-amber-400/35 hover:bg-amber-500/25 transition">
+                ⚡ ทดสอบ Step (+15°)
+              </button>
+              <button id="impulseLeftBtn" type="button"
+                class="rounded-lg bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-300 ring-1 ring-rose-400/35 hover:bg-rose-500/25 transition">
+                💨 กระแทกซ้าย
+              </button>
+              <button id="impulseRightBtn" type="button"
+                class="rounded-lg bg-rose-500/15 px-3 py-1.5 text-xs font-semibold text-rose-300 ring-1 ring-rose-400/35 hover:bg-rose-500/25 transition">
+                💨 กระแทกขวา
+              </button>
+            </div>
+            <div class="flex items-center gap-3 text-xs font-mono-num text-slate-400">
+              <span>L-Motor: <strong id="motorLReadout" class="text-sky-300">50%</strong></span>
+              <span>R-Motor: <strong id="motorRReadout" class="text-sky-300">50%</strong></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Telemetry Metrics Row -->
+        <section class="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+            <div class="text-[11px] font-medium text-slate-400">ค่าปัจจุบัน (Actual)</div>
+            <div id="metricActual" class="mt-1 text-lg font-bold font-mono-num text-sky-300">0.0°</div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+            <div class="text-[11px] font-medium text-slate-400">ความคลาดเคลื่อน (Error)</div>
+            <div id="metricError" class="mt-1 text-lg font-bold font-mono-num text-slate-100">0.0°</div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+            <div class="text-[11px] font-medium text-slate-400">พุ่งเกินเป้า (Overshoot)</div>
+            <div id="metricOvershoot" class="mt-1 text-lg font-bold font-mono-num text-amber-300">0.0%</div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-3">
+            <div class="text-[11px] font-medium text-slate-400">เวลาเข้าสมดุล (Settling)</div>
+            <div id="metricSettling" class="mt-1 text-lg font-bold font-mono-num text-emerald-300">--</div>
+          </div>
+        </section>
+
+        <!-- Live Oscilloscope Graph Card -->
+        <section class="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/70 shadow-xl">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 px-4 py-2.5">
+            <div class="flex items-center gap-3">
+              <h2 class="text-sm font-semibold text-slate-100">กราฟตอบสนองแบบเรียลไทม์ (Telemetry)</h2>
+              <div class="hidden items-center gap-3 text-[11px] sm:flex">
+                <span class="flex items-center gap-1 text-amber-300"><span class="inline-block h-0.5 w-3 border-t-2 border-dashed border-amber-400"></span>เป้าหมาย</span>
+                <span class="flex items-center gap-1 text-sky-300"><span class="inline-block h-0.5 w-3 bg-sky-400"></span>ค่าจริง</span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="inline-flex cursor-pointer items-center gap-1.5 text-xs text-slate-300">
+                <input id="showTermsToggle" type="checkbox" checked class="h-3.5 w-3.5 rounded border-slate-600 bg-slate-800 text-sky-500 focus:ring-sky-500" />
+                <span>แสดงกราฟแรง P / I / D</span>
+              </label>
+              <button id="clearGraphBtn" type="button"
+                class="rounded-lg bg-slate-800 px-2.5 py-1 text-[11px] font-medium text-slate-300 hover:bg-slate-700 transition">
+                ล้างกราฟ
+              </button>
+            </div>
+          </div>
+
+          <div id="responseChartWrap" class="relative h-44 w-full">
+            <canvas id="responseCanvas" class="block h-full w-full"></canvas>
+          </div>
+
+          <div id="termsChartSection" class="border-t border-slate-800/80">
+            <div class="flex items-center justify-between px-4 py-1.5 text-[11px] text-slate-400">
+              <span>แยกแรงสั่งการจากแต่ละเทอม (PID Output Terms)</span>
+              <div class="flex items-center gap-3 font-mono-num">
+                <span class="text-sky-400">P: <strong id="termPVal">0.0</strong></span>
+                <span class="text-emerald-400">I: <strong id="termIVal">0.0</strong></span>
+                <span class="text-purple-400">D: <strong id="termDVal">0.0</strong></span>
+              </div>
+            </div>
+            <div id="termsChartWrap" class="relative h-28 w-full">
+              <canvas id="termsCanvas" class="block h-full w-full"></canvas>
+            </div>
+          </div>
+        </section>
+      </div>
+
+      <!-- Right Column: PID Controls & Presets (5 cols) -->
+      <div class="flex flex-col gap-5 lg:col-span-5 xl:col-span-4">
+
+        <!-- PID Sliders Card -->
+        <section class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-xl sm:p-5">
+          <div class="flex items-center justify-between">
+            <h2 class="text-sm font-bold text-white">ปรับค่า PID Controller</h2>
+            <span class="rounded-md bg-slate-800 px-2 py-0.5 font-mono-num text-[11px] text-slate-300">
+              u = Kp·e + Ki·∫e + Kd·ė
+            </span>
+          </div>
+
+          <!-- Presets -->
+          <div class="mt-3">
+            <div class="mb-1.5 text-[11px] font-medium text-slate-400">เลือกโปรไฟล์ตัวอย่าง (Presets)</div>
+            <div class="grid grid-cols-2 gap-1.5">
+              <button data-preset="tuned" type="button"
+                class="preset-btn rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-left text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/35 hover:bg-emerald-500/25 transition">
+                ✓ สมดุลดี (Well-Tuned)
+              </button>
+              <button data-preset="p_only" type="button"
+                class="preset-btn rounded-lg bg-slate-800 px-2.5 py-1.5 text-left text-xs font-medium text-slate-300 ring-1 ring-slate-700 hover:bg-slate-700 transition">
+                ∿ P อย่างเดียว (แกว่ง)
+              </button>
+              <button data-preset="overdamped" type="button"
+                class="preset-btn rounded-lg bg-slate-800 px-2.5 py-1.5 text-left text-xs font-medium text-slate-300 ring-1 ring-slate-700 hover:bg-slate-700 transition">
+                🐢 หน่วงช้า (Overdamped)
+              </button>
+              <button data-preset="unstable" type="button"
+                class="preset-btn rounded-lg bg-slate-800 px-2.5 py-1.5 text-left text-xs font-medium text-rose-300 ring-1 ring-slate-700 hover:bg-slate-700 transition">
+                ⚠ แกว่งแรง (Oscillate)
+              </button>
+            </div>
+          </div>
+
+          <!-- Kp Control -->
+          <div class="mt-5 space-y-4">
+            <div class="rounded-xl bg-slate-950/60 p-3 ring-1 ring-slate-800/90">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <label for="kpSlider" class="text-xs font-bold text-sky-400">Kp — Proportional</label>
+                  <p class="text-[11px] text-slate-400">แรงดึงกลับตามความคลาดเคลื่อน (มากไปจะแกว่ง)</p>
+                </div>
+                <input id="kpNum" type="number" step="0.1" min="0" max="20" value="4.5"
+                  class="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono-num text-xs font-semibold text-sky-300 focus:border-sky-400 focus:outline-none" />
+              </div>
+              <input id="kpSlider" type="range" min="0" max="20" step="0.1" value="4.5" class="slider-p mt-2.5 w-full" />
+            </div>
+
+            <!-- Ki Control -->
+            <div class="rounded-xl bg-slate-950/60 p-3 ring-1 ring-slate-800/90">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <label for="kiSlider" class="text-xs font-bold text-emerald-400">Ki — Integral</label>
+                  <p class="text-[11px] text-slate-400">สะสมค่าคลาดเคลื่อน แก้อาการเอียงค้าง/ตกค้าง</p>
+                </div>
+                <input id="kiNum" type="number" step="0.05" min="0" max="10" value="1.2"
+                  class="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono-num text-xs font-semibold text-emerald-300 focus:border-emerald-400 focus:outline-none" />
+              </div>
+              <input id="kiSlider" type="range" min="0" max="10" step="0.05" value="1.2" class="slider-i mt-2.5 w-full" />
+            </div>
+
+            <!-- Kd Control -->
+            <div class="rounded-xl bg-slate-950/60 p-3 ring-1 ring-slate-800/90">
+              <div class="flex items-center justify-between gap-2">
+                <div>
+                  <label for="kdSlider" class="text-xs font-bold text-purple-400">Kd — Derivative</label>
+                  <p class="text-[11px] text-slate-400">ตัวหน่วงความเร็ว ช่วยเบรกและลด Overshoot</p>
+                </div>
+                <input id="kdNum" type="number" step="0.05" min="0" max="10" value="1.4"
+                  class="w-20 rounded-lg border border-slate-700 bg-slate-900 px-2 py-1 text-right font-mono-num text-xs font-semibold text-purple-300 focus:border-purple-400 focus:outline-none" />
+              </div>
+              <input id="kdSlider" type="range" min="0" max="10" step="0.05" value="1.4" class="slider-d mt-2.5 w-full" />
+            </div>
+          </div>
+        </section>
+
+        <!-- Target & Environment Card -->
+        <section class="rounded-2xl border border-slate-800 bg-slate-900/70 p-4 shadow-xl sm:p-5">
+          <h2 class="text-sm font-bold text-white">เป้าหมายและสภาพแวดล้อม</h2>
+
+          <div class="mt-3.5 space-y-4">
+            <!-- Setpoint -->
+            <div>
+              <div class="flex items-center justify-between text-xs">
+                <label for="spSlider" id="spLabel" class="font-semibold text-amber-300">มุมเป้าหมาย (Target Roll)</label>
+                <span id="spValue" class="font-mono-num font-bold text-amber-300">0.0°</span>
+              </div>
+              <input id="spSlider" type="range" min="-30" max="30" step="1" value="0" class="slider-sp mt-2 w-full" />
+              <div class="mt-1 flex justify-between font-mono-num text-[10px] text-slate-500">
+                <span id="spMinLabel">-30°</span>
+                <button id="spCenterBtn" type="button" class="text-slate-400 hover:text-amber-300 underline decoration-dotted">ตั้งกลาง (0°)</button>
+                <span id="spMaxLabel">+30°</span>
+              </div>
+            </div>
+
+            <!-- Steady Wind / Disturbance -->
+            <div class="border-t border-slate-800/80 pt-3.5">
+              <div class="flex items-center justify-between text-xs">
+                <label for="windSlider" id="windLabel" class="font-semibold text-rose-300">ลมคงที่ / ถ่วงน้ำหนักไม่สมดุล</label>
+                <span id="windValue" class="font-mono-num font-bold text-rose-300">0.0</span>
+              </div>
+              <input id="windSlider" type="range" min="-10" max="10" step="0.5" value="0" class="slider-wind mt-2 w-full" />
+              <div class="mt-1 flex justify-between text-[10px] text-slate-500">
+                <span id="windMinLabel">เอียงซ้าย</span>
+                <button id="windZeroBtn" type="button" class="text-slate-400 hover:text-rose-300 underline decoration-dotted">ปิดแรงรบกวน (0)</button>
+                <span id="windMaxLabel">เอียงขวา</span>
+              </div>
+            </div>
+
+            <!-- Turbulence Toggle -->
+            <div class="flex items-center justify-between rounded-xl bg-slate-950/60 px-3 py-2.5 ring-1 ring-slate-800/90">
+              <div>
+                <div class="text-xs font-semibold text-slate-200">ลมกระโชกแบบสุ่ม (Turbulence)</div>
+                <div class="text-[11px] text-slate-400">จำลองสภาพอากาศแปรปรวนต่อเนื่อง</div>
+              </div>
+              <label class="relative inline-flex cursor-pointer items-center">
+                <input id="turbulenceToggle" type="checkbox" class="peer sr-only" />
+                <div class="h-5 w-9 rounded-full bg-slate-700 after:absolute after:left-[2px] after:top-[2px] after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:bg-rose-500 peer-checked:after:translate-x-4"></div>
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- Compact Thai PID Tuning Guide -->
+        <section class="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+          <button id="guideToggleBtn" type="button" class="flex w-full items-center justify-between text-left">
+            <span class="text-xs font-bold text-slate-200">💡 แนวทางลองจูน PID แบบทีละขั้น</span>
+            <span id="guideChevron" class="text-xs text-slate-400 transition-transform">▼</span>
+          </button>
+          <div id="guideContent" class="mt-3 space-y-2 text-xs leading-relaxed text-slate-300">
+            <p><strong class="text-sky-400">1. เริ่มจาก Kp:</strong> ตั้ง Ki = 0, Kd = 0 แล้วค่อยๆ เพิ่ม Kp จนโดรนดึงตัวกลับเร็วแต่เริ่มแกว่งไปมา</p>
+            <p><strong class="text-purple-400">2. เพิ่ม Kd เพื่อหยุดการแกว่ง:</strong> เพิ่ม Kd ทีละน้อย จะเห็นอาการแกว่งและ Overshoot ลดลงจนนิ่งเร็วขึ้น</p>
+            <p><strong class="text-emerald-400">3. เติม Ki แก้ค่าค้าง:</strong> ลองเปิด <em>ลมคงที่</em> แล้วดูว่าถ้า Ki = 0 โดรนจะเอียงหรือตกค้างอยู่ จากนั้นเพิ่ม Ki เพื่อดึงกลับมาตรงเป้าพอดี</p>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+
+  <script>
+    (() => {
+      // =========================================================
+      // 1. State & Mode Configurations
+      // =========================================================
+      const MODE_CONFIG = {
+        roll: {
+          title: 'ห้องทดสอบทรงตัวมุมเอียง (Roll Axis)',
+          spLabel: 'มุมเป้าหมาย (Target Roll)',
+          windLabel: 'ลมคงที่ / น้ำหนักถ่วงเอียง (CG Offset)',
+          spMin: -30, spMax: 30, spStep: 1, spDefault: 0, spCenterText: 'ตั้งกลาง (0°)',
+          windMin: -10, windMax: 10, windStep: 0.5, windMinText: 'เอียงซ้าย', windMaxText: 'เอียงขวา',
+          stepBtnText: '⚡ ทดสอบ Step (+15°)',
+          impLeftText: '💨 กระแทกซ้าย',
+          impRightText: '💨 กระแทกขวา',
+          unit: '°',
+          graphMin: -40, graphMax: 40,
+          maxOutput: 45,
+          kpRange: [0, 20, 0.1],
+          kiRange: [0, 10, 0.05],
+          kdRange: [0, 10, 0.05],
+          presets: {
+            tuned:      { kp: 4.5, ki: 1.2, kd: 1.4 },
+            p_only:     { kp: 5.5, ki: 0.0, kd: 0.0 },
+            overdamped: { kp: 1.4, ki: 0.2, kd: 2.8 },
+            unstable:   { kp: 14.0, ki: 4.5, kd: 0.15 }
+          }
+        },
+        altitude: {
+          title: 'ห้องทดสอบรักษาความสูง (Altitude Hold)',
+          spLabel: 'ความสูงเป้าหมาย (Target Altitude)',
+          windLabel: 'น้ำหนักบรรทุกเพิ่ม / ลมแนวดิ่ง',
+          spMin: 1.5, spMax: 8.5, spStep: 0.1, spDefault: 5.0, spCenterText: 'ตั้งกลาง (5.0 m)',
+          windMin: -8, windMax: 8, windStep: 0.5, windMinText: 'ลมกดลง / หนักขึ้น', windMaxText: 'ลมยกขึ้น',
+          stepBtnText: '⚡ ทดสอบ Step (+2.0 m)',
+          impLeftText: '⬇ ลมกดลง',
+          impRightText: '⬆ ลมยกขึ้น',
+          unit: ' m',
+          graphMin: 0, graphMax: 10,
+          maxOutput: 25,
+          kpRange: [0, 25, 0.1],
+          kiRange: [0, 15, 0.05],
+          kdRange: [0, 15, 0.05],
+          presets: {
+            tuned:      { kp: 7.5, ki: 2.4, kd: 4.2 },
+            p_only:     { kp: 8.0, ki: 0.0, kd: 0.0 },
+            overdamped: { kp: 2.2, ki: 0.4, kd: 6.5 },
+            unstable:   { kp: 18.0, ki: 8.0, kd: 0.4 }
+          }
+        }
+      };
+
+      const state = {
+        mode: 'roll', // 'roll' | 'altitude'
+        paused: false,
+        showTerms: true,
+        turbulence: false,
+
+        // PID Gains
+        kp: 4.5,
+        ki: 1.2,
+        kd: 1.4,
+
+        // Setpoint & Environment
+        setpoint: 0,
+        steadyWind: 0,
+        turbValue: 0,
+        turbTarget: 0,
+        turbTimer: 0,
+
+        // Roll Physics (degrees for intuitive tuning)
+        angle: 0,        // deg
+        angVel: 0,       // deg/s
+        // Altitude Physics (meters)
+        alt: 5.0,        // m
+        altVel: 0,       // m/s
+
+        // PID Internals
+        integral: 0,
+        prevError: 0,
+        derivFiltered: 0,
+        pTerm: 0,
+        iTerm: 0,
+        dTerm: 0,
+        output: 0,
+
+        // Visual Motor Throttles (0..100%)
+        motorL: 50,
+        motorR: 50,
+        propPhase: 0,
+
+        // Step-Response Metrics
+        simTime: 0,
+        stepStartTime: 0,
+        stepInitialVal: 0,
+        stepTargetVal: 0,
+        stepActive: false,
+        stepPeakOvershootPct: 0,
+        stepSettledTime: null,
+        stepInBandSince: null,
+
+        // Dragging interaction
+        isDragging: false,
+        dragStartX: 0,
+        dragStartY: 0,
+
+        // History Ring Buffer (10 seconds at ~60Hz = 600 samples)
+        history: [],
+        maxHistory: 480,
+
+        // Wind Particles
+        particles: []
+      };
+
+      // =========================================================
+      // 2. DOM Elements
+      // =========================================================
+      const el = {
+        modeRollBtn: document.getElementById('modeRollBtn'),
+        modeAltBtn: document.getElementById('modeAltBtn'),
+        pauseBtn: document.getElementById('pauseBtn'),
+        pauseIcon: document.getElementById('pauseIcon'),
+        pauseText: document.getElementById('pauseText'),
+        resetSimBtn: document.getElementById('resetSimBtn'),
+
+        viewportTitle: document.getElementById('viewportTitle'),
+        statusDot: document.getElementById('statusDot'),
+        stabilityBadge: document.getElementById('stabilityBadge'),
+        droneCanvasWrap: document.getElementById('droneCanvasWrap'),
+        droneCanvas: document.getElementById('droneCanvas'),
+
+        stepTestBtn: document.getElementById('stepTestBtn'),
+        impulseLeftBtn: document.getElementById('impulseLeftBtn'),
+        impulseRightBtn: document.getElementById('impulseRightBtn'),
+        motorLReadout: document.getElementById('motorLReadout'),
+        motorRReadout: document.getElementById('motorRReadout'),
+
+        metricActual: document.getElementById('metricActual'),
+        metricError: document.getElementById('metricError'),
+        metricOvershoot: document.getElementById('metricOvershoot'),
+        metricSettling: document.getElementById('metricSettling'),
+
+        responseChartWrap: document.getElementById('responseChartWrap'),
+        responseCanvas: document.getElementById('responseCanvas'),
+        termsChartSection: document.getElementById('termsChartSection'),
+        termsChartWrap: document.getElementById('termsChartWrap'),
+        termsCanvas: document.getElementById('termsCanvas'),
+        showTermsToggle: document.getElementById('showTermsToggle'),
+        clearGraphBtn: document.getElementById('clearGraphBtn'),
+        termPVal: document.getElementById('termPVal'),
+        termIVal: document.getElementById('termIVal'),
+        termDVal: document.getElementById('termDVal'),
+
+        kpSlider: document.getElementById('kpSlider'),
+        kpNum: document.getElementById('kpNum'),
+        kiSlider: document.getElementById('kiSlider'),
+        kiNum: document.getElementById('kiNum'),
+        kdSlider: document.getElementById('kdSlider'),
+        kdNum: document.getElementById('kdNum'),
+
+        spLabel: document.getElementById('spLabel'),
+        spValue: document.getElementById('spValue'),
+        spSlider: document.getElementById('spSlider'),
+        spMinLabel: document.getElementById('spMinLabel'),
+        spMaxLabel: document.getElementById('spMaxLabel'),
+        spCenterBtn: document.getElementById('spCenterBtn'),
+
+        windLabel: document.getElementById('windLabel'),
+        windValue: document.getElementById('windValue'),
+        windSlider: document.getElementById('windSlider'),
+        windMinLabel: document.getElementById('windMinLabel'),
+        windMaxLabel: document.getElementById('windMaxLabel'),
+        windZeroBtn: document.getElementById('windZeroBtn'),
+        turbulenceToggle: document.getElementById('turbulenceToggle'),
+
+        guideToggleBtn: document.getElementById('guideToggleBtn'),
+        guideContent: document.getElementById('guideContent'),
+        guideChevron: document.getElementById('guideChevron'),
+        presetBtns: document.querySelectorAll('.preset-btn')
+      };
+
+      // =========================================================
+      // 3. Canvas Sizing & Contexts
+      // =========================================================
+      const droneCtx = el.droneCanvas.getContext('2d');
+      const respCtx = el.responseCanvas.getContext('2d');
+      const termsCtx = el.termsCanvas.getContext('2d');
+
+      function resizeCanvas(canvas, wrap) {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        const rect = wrap.getBoundingClientRect();
+        const w = Math.max(100, Math.floor(rect.width));
+        const h = Math.max(80, Math.floor(rect.height));
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        const ctx = canvas.getContext('2d');
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        return { w, h };
+      }
+
+      let dims = {
+        drone: { w: 600, h: 340 },
+        resp: { w: 600, h: 176 },
+        terms: { w: 600, h: 112 }
+      };
+
+      function handleResize() {
+        dims.drone = resizeCanvas(el.droneCanvas, el.droneCanvasWrap);
+        dims.resp = resizeCanvas(el.responseCanvas, el.responseChartWrap);
+        if (state.showTerms) {
+          dims.terms = resizeCanvas(el.termsCanvas, el.termsChartWrap);
+        }
+      }
+
+      // =========================================================
+      // 4. Helper Functions
+      // =========================================================
+      function clamp(v, lo, hi) {
+        if (!Number.isFinite(v)) return lo;
+        return Math.max(lo, Math.min(hi, v));
+      }
+
+      function getCurrentVal() {
+        return state.mode === 'roll' ? state.angle : state.alt;
+      }
+
+      function startStepTracking(newTarget) {
+        state.stepInitialVal = getCurrentVal();
+        state.stepTargetVal = newTarget;
+        state.stepStartTime = state.simTime;
+        state.stepPeakOvershootPct = 0;
+        state.stepSettledTime = null;
+        state.stepInBandSince = null;
+        state.stepActive = Math.abs(newTarget - state.stepInitialVal) > (state.mode === 'roll' ? 2.0 : 0.3);
+      }
+
+      function syncPIDInputs() {
+        el.kpSlider.value = state.kp;
+        el.kpNum.value = Number(state.kp).toFixed(2).replace(/\.?0+$/, '') || '0';
+        el.kiSlider.value = state.ki;
+        el.kiNum.value = Number(state.ki).toFixed(2).replace(/\.?0+$/, '') || '0';
+        el.kdSlider.value = state.kd;
+        el.kdNum.value = Number(state.kd).toFixed(2).replace(/\.?0+$/, '') || '0';
+      }
+
+      function syncEnvInputs() {
+        const cfg = MODE_CONFIG[state.mode];
+        el.spSlider.value = state.setpoint;
+        el.spValue.textContent = `${state.setpoint.toFixed(1)}${cfg.unit}`;
+        el.windSlider.value = state.steadyWind;
+        el.windValue.textContent = `${state.steadyWind > 0 ? '+' : ''}${state.steadyWind.toFixed(1)}`;
+      }
+
+      function applyPreset(presetKey) {
+        const preset = MODE_CONFIG[state.mode].presets[presetKey];
+        if (!preset) return;
+        state.kp = preset.kp;
+        state.ki = preset.ki;
+        state.kd = preset.kd;
+        syncPIDInputs();
+
+        // Highlight active preset button
+        el.presetBtns.forEach(btn => {
+          const isMatch = btn.dataset.preset === presetKey;
+          btn.className = isMatch
+            ? 'preset-btn rounded-lg bg-emerald-500/15 px-2.5 py-1.5 text-left text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/35 hover:bg-emerald-500/25 transition'
+            : 'preset-btn rounded-lg bg-slate-800 px-2.5 py-1.5 text-left text-xs font-medium text-slate-300 ring-1 ring-slate-700 hover:bg-slate-700 transition';
+        });
+      }
+
+      function resetDronePhysics(clearHist = false) {
+        state.integral = 0;
+        state.prevError = 0;
+        state.derivFiltered = 0;
+        state.pTerm = 0;
+        state.iTerm = 0;
+        state.dTerm = 0;
+        state.output = 0;
+
+        if (state.mode === 'roll') {
+          state.angle = 0;
+          state.angVel = 0;
+          state.motorL = 50;
+          state.motorR = 50;
+        } else {
+          state.alt = 5.0;
+          state.altVel = 0;
+          state.motorL = 50;
+          state.motorR = 50;
+        }
+
+        state.stepActive = false;
+        state.stepPeakOvershootPct = 0;
+        state.stepSettledTime = null;
+        state.stepInBandSince = null;
+
+        if (clearHist) {
+          state.history = [];
+        }
+      }
+
+      function switchMode(newMode) {
+        state.mode = newMode;
+        const cfg = MODE_CONFIG[newMode];
+
+        // Update Mode Tabs
+        const activeTab = 'rounded-lg bg-sky-500/20 px-3 py-1.5 text-xs font-semibold text-sky-300 ring-1 ring-sky-400/40 transition';
+        const inactiveTab = 'rounded-lg px-3 py-1.5 text-xs font-medium text-slate-400 hover:text-slate-200 transition';
+        el.modeRollBtn.className = newMode === 'roll' ? activeTab : inactiveTab;
+        el.modeAltBtn.className = newMode === 'altitude' ? activeTab : inactiveTab;
+        el.modeRollBtn.setAttribute('aria-selected', String(newMode === 'roll'));
+        el.modeAltBtn.setAttribute('aria-selected', String(newMode === 'altitude'));
+
+        // Update labels & slider ranges
+        el.viewportTitle.textContent = cfg.title;
+        el.spLabel.textContent = cfg.spLabel;
+        el.spSlider.min = cfg.spMin;
+        el.spSlider.max = cfg.spMax;
+        el.spSlider.step = cfg.spStep;
+        el.spMinLabel.textContent = `${cfg.spMin}${cfg.unit}`;
+        el.spMaxLabel.textContent = `${cfg.spMax}${cfg.unit}`;
+        el.spCenterBtn.textContent = cfg.spCenterText;
+
+        el.windLabel.textContent = cfg.windLabel;
+        el.windSlider.min = cfg.windMin;
+        el.windSlider.max = cfg.windMax;
+        el.windSlider.step = cfg.windStep;
+        el.windMinLabel.textContent = cfg.windMinText;
+        el.windMaxLabel.textContent = cfg.windMaxText;
+
+        el.stepTestBtn.textContent = cfg.stepBtnText;
+        el.impulseLeftBtn.textContent = cfg.impLeftText;
+        el.impulseRightBtn.textContent = cfg.impRightText;
+
+        el.kpSlider.min = cfg.kpRange[0]; el.kpSlider.max = cfg.kpRange[1]; el.kpSlider.step = cfg.kpRange[2];
+        el.kiSlider.min = cfg.kiRange[0]; el.kiSlider.max = cfg.kiRange[1]; el.kiSlider.step = cfg.kiRange[2];
+        el.kdSlider.min = cfg.kdRange[0]; el.kdSlider.max = cfg.kdRange[1]; el.kdSlider.step = cfg.kdRange[2];
+
+        state.setpoint = cfg.spDefault;
+        state.steadyWind = 0;
+        applyPreset('tuned');
+        syncEnvInputs();
+        resetDronePhysics(true);
+      }
+
+      // =========================================================
+      // 5. Physics Step (Sub-stepped for Stability)
+      // =========================================================
+      function physicsSubstep(dt) {
+        if (!Number.isFinite(dt) || dt <= 1e-6) return;
+        state.simTime += dt;
+
+        // Turbulence generator (smooth random walk)
+        if (state.turbulence) {
+          state.turbTimer -= dt;
+          if (state.turbTimer <= 0) {
+            state.turbTimer = 0.25 + Math.random() * 0.45;
+            const mag = state.mode === 'roll' ? 14 : 5.5;
+            state.turbTarget = (Math.random() * 2 - 1) * mag;
+          }
+          state.turbValue += (state.turbTarget - state.turbValue) * Math.min(1, dt * 4.5);
+        } else {
+          state.turbValue *= Math.max(0, 1 - dt * 6);
+        }
+
+        const cfg = MODE_CONFIG[state.mode];
+        const actual = getCurrentVal();
+        const error = state.setpoint - actual;
+
+        // Derivative with realistic low-pass filter
+        const rawDeriv = (error - state.prevError) / dt;
+        state.derivFiltered += (rawDeriv - state.derivFiltered) * Math.min(1, dt * 18);
+        state.prevError = error;
+
+        // Integral with anti-windup clamping
+        const maxIntegral = state.ki > 0.001 ? (cfg.maxOutput * 0.75) / state.ki : 25;
+        state.integral = clamp(state.integral + error * dt, -maxIntegral, maxIntegral);
+
+        // PID Terms
+        state.pTerm = state.kp * error;
+        state.iTerm = state.ki * state.integral;
+        state.dTerm = state.kd * state.derivFiltered;
+        state.output = clamp(state.pTerm + state.iTerm + state.dTerm, -cfg.maxOutput, cfg.maxOutput);
+
+        if (state.mode === 'roll') {
+          // 1-DOF Rotational Dynamics (degrees)
+          // Torque from PID + steady wind/CG offset + turbulence - light air damping
+          const inertia = 0.16;
+          const airDrag = 0.28 * state.angVel;
+          const distTorque = state.steadyWind * 1.8 + state.turbValue;
+          const angAccel = (state.output * 2.6 + distTorque - airDrag) / inertia;
+
+          if (!state.isDragging) {
+            state.angVel += angAccel * dt;
+            state.angle += state.angVel * dt;
+
+            // Physical safety limit (-75° to +75°)
+            if (state.angle > 75) { state.angle = 75; state.angVel *= -0.35; }
+            if (state.angle < -75) { state.angle = -75; state.angVel *= -0.35; }
+          }
+
+          // Differential motor thrust visualization
+          const diff = (state.output / cfg.maxOutput) * 42;
+          state.motorL = clamp(50 + diff, 8, 100);
+          state.motorR = clamp(50 - diff, 8, 100);
+        } else {
+          // 1-DOF Vertical Hover Dynamics (meters)
+          // Base hover thrust slightly below gravity (1.2 m/s^2 deficit) so Ki effect is clearly visible even at 0 wind, or exact balance at 0 wind & steadyWind adds payload/draft!
+          // Let's make 0 wind = exact hover at 50% throttle, and steadyWind adds downward load or upward draft.
+          // Actually, realistic altitude PID without feedforward has gravity = 9.81, so let's include 85% hover feedforward (leaving a small 1.4 m/s^2 gravity residual) so if Ki=0 there's a realistic steady-state sag!
+          const mass = 1.2; // kg
+          const gravity = 9.81;
+          const hoverFeedforward = mass * gravity * 0.85; // 85% base hover throttle
+          const thrust = clamp(hoverFeedforward + state.output * 1.15, 0, mass * gravity * 2.2);
+          const drag = 0.45 * state.altVel;
+          const windForce = state.steadyWind * 0.9 + state.turbValue * 0.55;
+          const accel = (thrust - mass * gravity + windForce - drag) / mass;
+
+          if (!state.isDragging) {
+            state.altVel += accel * dt;
+            state.alt += state.altVel * dt;
+
+            if (state.alt < 0.35) {
+              state.alt = 0.35;
+              if (state.altVel < 0) state.altVel *= -0.25;
+            }
+            if (state.alt > 9.6) {
+              state.alt = 9.6;
+              if (state.altVel > 0) state.altVel *= -0.25;
+            }
+          }
+
+          const throttlePct = clamp((thrust / (mass * gravity * 2.0)) * 100, 5, 100);
+          state.motorL = throttlePct;
+          state.motorR = throttlePct;
+        }
+
+        // Propeller animation speed
+        const avgMotor = (state.motorL + state.motorR) * 0.5;
+        state.propPhase += dt * (18 + avgMotor * 0.45);
+
+        // Update Step-Response Metrics
+        if (state.stepActive) {
+          const stepDelta = state.stepTargetVal - state.stepInitialVal;
+          const stepMag = Math.abs(stepDelta);
+          const currentVal = getCurrentVal();
+          const overshootVal = (currentVal - state.stepTargetVal) * Math.sign(stepDelta);
+          if (overshootVal > 0 && stepMag > 0.01) {
+            const pct = (overshootVal / stepMag) * 100;
+            if (pct > state.stepPeakOvershootPct) {
+              state.stepPeakOvershootPct = pct;
+            }
+          }
+
+          const settleBand = state.mode === 'roll' ? Math.max(1.0, stepMag * 0.04) : Math.max(0.12, stepMag * 0.04);
+          if (Math.abs(state.stepTargetVal - currentVal) <= settleBand) {
+            if (state.stepInBandSince === null) {
+              state.stepInBandSince = state.simTime;
+            } else if (state.simTime - state.stepInBandSince >= 0.45 && state.stepSettledTime === null) {
+              state.stepSettledTime = state.stepInBandSince - state.stepStartTime;
+            }
+          } else {
+            state.stepInBandSince = null;
+            state.stepSettledTime = null;
+          }
+        }
+      }
+
+      // =========================================================
+      // 6. Drawing: Drone Viewport
+      // =========================================================
+      function drawDroneScene() {
+        const ctx = droneCtx;
+        const { w, h } = dims.drone;
+        ctx.clearRect(0, 0, w, h);
+
+        // Sky / Lab Background Gradient
+        const bgGrad = ctx.createLinearGradient(0, 0, 0, h);
+        bgGrad.addColorStop(0, '#070b14');
+        bgGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, w, h);
+
+        // Subtle Engineering Grid
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.07)';
+        ctx.lineWidth = 1;
+        const gridSize = 36;
+        for (let x = 0; x < w; x += gridSize) {
+          ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
+        }
+        for (let y = 0; y < h; y += gridSize) {
+          ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+        }
+
+        // Draw Wind Particles if wind/turbulence active
+        const netWind = state.steadyWind + state.turbValue * 0.5;
+        drawWindParticles(ctx, w, h, netWind);
+
+        const cx = w / 2;
+        let cy = h / 2 + 10;
+        let drawAngleRad = 0;
+
+        if (state.mode === 'roll') {
+          drawAngleRad = (state.angle * Math.PI) / 180;
+          const spRad = (state.setpoint * Math.PI) / 180;
+
+          // Reference horizon line
+          ctx.save();
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.2)';
+          ctx.setLineDash([4, 6]);
+          ctx.beginPath();
+          ctx.moveTo(cx - 170, cy);
+          ctx.lineTo(cx + 170, cy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Protractor Arc
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.16)';
+          ctx.lineWidth = 1.5;
+          ctx.beginPath();
+          ctx.arc(cx, cy, 128, -Math.PI * 0.85, -Math.PI * 0.15);
+          ctx.stroke();
+
+          // Tick marks on protractor
+          for (let deg = -30; deg <= 30; deg += 15) {
+            const rad = ((deg - 90) * Math.PI) / 180;
+            const r1 = 123, r2 = deg === 0 ? 135 : 131;
+            ctx.beginPath();
+            ctx.moveTo(cx + Math.cos(rad) * r1, cy + Math.sin(rad) * r1);
+            ctx.lineTo(cx + Math.cos(rad) * r2, cy + Math.sin(rad) * r2);
+            ctx.strokeStyle = deg === 0 ? 'rgba(148, 163, 184, 0.45)' : 'rgba(148, 163, 184, 0.25)';
+            ctx.stroke();
+          }
+
+          // Target Setpoint Ghost Line
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(spRad);
+          ctx.strokeStyle = 'rgba(251, 191, 36, 0.75)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([6, 5]);
+          ctx.beginPath();
+          ctx.moveTo(-120, 0);
+          ctx.lineTo(120, 0);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Target label badge
+          ctx.fillStyle = '#fbbf24';
+          ctx.font = '600 11px JetBrains Mono, monospace';
+          ctx.textAlign = 'left';
+          ctx.fillText(`TARGET ${state.setpoint.toFixed(0)}°`, 126, 4);
+          ctx.restore();
+
+          // Pivot stand hint (subtle gimbal ring)
+          ctx.beginPath();
+          ctx.arc(cx, cy, 12, 0, Math.PI * 2);
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+        } else {
+          // Altitude Mode: map 0..10m to bottom..top with padding
+          const padTop = 34;
+          const padBottom = 34;
+          const mapY = (m) => h - padBottom - (clamp(m, 0, 10) / 10) * (h - padTop - padBottom);
+          cy = mapY(state.alt);
+          const targetY = mapY(state.setpoint);
+
+          // Ground Floor
+          const groundY = mapY(0);
+          ctx.fillStyle = 'rgba(30, 41, 59, 0.85)';
+          ctx.fillRect(0, groundY, w, h - groundY);
+          ctx.strokeStyle = 'rgba(100, 116, 139, 0.5)';
+          ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(w, groundY); ctx.stroke();
+
+          // Altitude Scale Ticks (left side)
+          ctx.fillStyle = '#64748b';
+          ctx.font = '500 10px JetBrains Mono, monospace';
+          ctx.textAlign = 'left';
+          for (let m = 0; m <= 10; m += 2) {
+            const ty = mapY(m);
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)';
+            ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(38, ty); ctx.lineTo(w - 20, ty); ctx.stroke();
+            ctx.fillText(`${m}m`, 10, ty + 3);
+          }
+
+          // Target Altitude Dashed Line
+          ctx.strokeStyle = 'rgba(251, 191, 36, 0.8)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([7, 5]);
+          ctx.beginPath();
+          ctx.moveTo(40, targetY);
+          ctx.lineTo(w - 20, targetY);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          ctx.fillStyle = '#fbbf24';
+          ctx.font = '600 11px JetBrains Mono, monospace';
+          ctx.textAlign = 'right';
+          ctx.fillText(`TARGET ${state.setpoint.toFixed(1)}m`, w - 24, targetY - 6);
+
+          // Slight natural visual tilt in altitude mode from turbulence
+          drawAngleRad = clamp(state.turbValue * 0.006, -0.08, 0.08);
+        }
+
+        // Draw the Quadcopter
+        drawQuadcopter(ctx, cx, cy, drawAngleRad, state.motorL, state.motorR, state.propPhase);
+
+        // Top-Left Mini HUD
+        ctx.save();
+        ctx.fillStyle = 'rgba(15, 23, 42, 0.72)';
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.8)';
+        ctx.lineWidth = 1;
+        roundRect(ctx, 12, 12, 162, 54, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        const unit = MODE_CONFIG[state.mode].unit;
+        const val = getCurrentVal();
+        const err = state.setpoint - val;
+        ctx.font = '600 11px JetBrains Mono, monospace';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillText(`ACTUAL : ${val.toFixed(1)}${unit}`, 22, 31);
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText(`TARGET : ${state.setpoint.toFixed(1)}${unit}`, 22, 46);
+        ctx.fillStyle = Math.abs(err) < (state.mode === 'roll' ? 1.5 : 0.2) ? '#34d399' : '#fb7185';
+        ctx.fillText(`ERROR  : ${err >= 0 ? '+' : ''}${err.toFixed(1)}${unit}`, 22, 60);
+        ctx.restore();
+      }
+
+      function drawQuadcopter(ctx, x, y, angleRad, mL, mR, phase) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angleRad);
+
+        const armLen = 88;
+
+        // Thrust Plumes under motors
+        drawThrustPlume(ctx, -armLen, 4, mL);
+        drawThrustPlume(ctx, armLen, 4, mR);
+
+        // Landing Skids
+        ctx.strokeStyle = '#475569';
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-26, 8); ctx.lineTo(-34, 24); ctx.lineTo(-42, 24);
+        ctx.moveTo(26, 8); ctx.lineTo(34, 24); ctx.lineTo(42, 24);
+        ctx.stroke();
+
+        // Main Carbon Fiber Arm
+        ctx.strokeStyle = '#94a3b8';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.moveTo(-armLen, 0);
+        ctx.lineTo(armLen, 0);
+        ctx.stroke();
+
+        // Inner Arm Accent
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(-armLen + 6, 0);
+        ctx.lineTo(armLen - 6, 0);
+        ctx.stroke();
+
+        // Motor Housings
+        [-armLen, armLen].forEach((mx, idx) => {
+          ctx.fillStyle = '#334155';
+          ctx.strokeStyle = '#64748b';
+          ctx.lineWidth = 1.5;
+          roundRect(ctx, mx - 8, -11, 16, 14, 3);
+          ctx.fill();
+          ctx.stroke();
+
+          // Motor shaft
+          ctx.fillStyle = '#cbd5e1';
+          ctx.fillRect(mx - 2, -17, 4, 6);
+
+          // Spinning Propeller Blur
+          const throttle = idx === 0 ? mL : mR;
+          const propHalf = 32;
+          const spinWidth = Math.max(8, Math.abs(Math.cos(phase + idx * 1.3)) * propHalf);
+          ctx.strokeStyle = `rgba(56, 189, 248, ${0.35 + (throttle / 100) * 0.55})`;
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          ctx.moveTo(mx - propHalf, -16);
+          ctx.lineTo(mx + propHalf, -16);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#e0f2fe';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(mx - spinWidth, -16);
+          ctx.lineTo(mx + spinWidth, -16);
+          ctx.stroke();
+
+          // Motor LED
+          ctx.fillStyle = idx === 0 ? '#f43f5e' : '#10b981';
+          ctx.beginPath();
+          ctx.arc(mx, 4, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        });
+
+        // Center Flight Controller Body
+        const bodyGrad = ctx.createLinearGradient(0, -14, 0, 12);
+        bodyGrad.addColorStop(0, '#334155');
+        bodyGrad.addColorStop(1, '#0f172a');
+        ctx.fillStyle = bodyGrad;
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 1.8;
+        roundRect(ctx, -30, -12, 60, 22, 8);
+        ctx.fill();
+        ctx.stroke();
+
+        // Center Status LED
+        const errAbs = Math.abs(state.setpoint - getCurrentVal());
+        const good = errAbs < (state.mode === 'roll' ? 2.0 : 0.25);
+        ctx.fillStyle = good ? '#34d399' : '#fbbf24';
+        ctx.shadowColor = good ? '#34d399' : '#fbbf24';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, -1, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        ctx.restore();
+      }
+
+      function drawThrustPlume(ctx, x, y, throttle) {
+        const safeThrottle = clamp(throttle, 0, 100);
+        const len = 12 + (safeThrottle / 100) * 48;
+        const grad = ctx.createLinearGradient(x, y, x, y + len);
+        grad.addColorStop(0, `rgba(56, 189, 248, ${0.15 + (safeThrottle / 100) * 0.55})`);
+        grad.addColorStop(1, 'rgba(56, 189, 248, 0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(x - 10, y);
+        ctx.lineTo(x + 10, y);
+        ctx.lineTo(x + 16, y + len);
+        ctx.lineTo(x - 16, y + len);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      function drawWindParticles(ctx, w, h, windVal) {
+        if (Math.abs(windVal) < 0.25) return;
+        const count = Math.min(28, Math.ceil(Math.abs(windVal) * 2.2));
+        while (state.particles.length < count) {
+          state.particles.push({
+            x: Math.random() * w,
+            y: Math.random() * h,
+            len: 16 + Math.random() * 24,
+            speed: 1.5 + Math.random() * 2.5
+          });
+        }
+        ctx.strokeStyle = 'rgba(251, 113, 133, 0.32)';
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        for (let i = 0; i < count; i++) {
+          const p = state.particles[i];
+          if (state.mode === 'roll') {
+            p.x += windVal * p.speed * 0.45;
+            if (p.x > w + 40) p.x = -40;
+            if (p.x < -40) p.x = w + 40;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x + Math.sign(windVal) * p.len, p.y);
+            ctx.stroke();
+          } else {
+            p.y -= windVal * p.speed * 0.45;
+            if (p.y > h + 40) p.y = -40;
+            if (p.y < -40) p.y = h + 40;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x, p.y - Math.sign(windVal) * p.len);
+            ctx.stroke();
+          }
+        }
+      }
+
+      function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+
+      // =========================================================
+      // 7. Drawing: Real-time Oscilloscope Graphs
+      // =========================================================
+      function drawResponseGraph() {
+        const ctx = respCtx;
+        const { w, h } = dims.resp;
+        const cfg = MODE_CONFIG[state.mode];
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.fillStyle = '#090e1a';
+        ctx.fillRect(0, 0, w, h);
+
+        const padL = 44, padR = 14, padT = 14, padB = 18;
+        const plotW = w - padL - padR;
+        const plotH = h - padT - padB;
+        const minV = cfg.graphMin;
+        const maxV = cfg.graphMax;
+        const mapY = (v) => padT + (1 - (clamp(v, minV, maxV) - minV) / (maxV - minV)) * plotH;
+
+        // Horizontal grid & labels
+        ctx.font = '500 10px JetBrains Mono, monospace';
+        ctx.textAlign = 'right';
+        const ticks = state.mode === 'roll' ? [-30, -15, 0, 15, 30] : [0, 2.5, 5, 7.5, 10];
+        ticks.forEach(t => {
+          const y = mapY(t);
+          ctx.strokeStyle = t === 0 ? 'rgba(148, 163, 184, 0.25)' : 'rgba(148, 163, 184, 0.08)';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(padL, y); ctx.lineTo(w - padR, y); ctx.stroke();
+          ctx.fillStyle = '#64748b';
+          ctx.fillText(`${t}${cfg.unit}`, padL - 6, y + 3);
+        });
+
+        const hist = state.history;
+        if (hist.length < 2) return;
+
+        // Setpoint Line (dashed amber)
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 1.8;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        for (let i = 0; i < hist.length; i++) {
+          const x = padL + (i / (state.maxHistory - 1)) * plotW;
+          const y = mapY(hist[i].sp);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Actual Response Line (solid cyan)
+        ctx.strokeStyle = '#38bdf8';
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        for (let i = 0; i < hist.length; i++) {
+          const x = padL + (i / (state.maxHistory - 1)) * plotW;
+          const y = mapY(hist[i].val);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      function drawTermsGraph() {
+        if (!state.showTerms) return;
+        const ctx = termsCtx;
+        const { w, h } = dims.terms;
+        const cfg = MODE_CONFIG[state.mode];
+        ctx.clearRect(0, 0, w, h);
+
+        ctx.fillStyle = '#070b14';
+        ctx.fillRect(0, 0, w, h);
+
+        const padL = 44, padR = 14, padT = 10, padB = 10;
+        const plotW = w - padL - padR;
+        const plotH = h - padT - padB;
+        const limit = cfg.maxOutput;
+        const mapY = (v) => padT + (1 - (clamp(v, -limit, limit) + limit) / (2 * limit)) * plotH;
+
+        // Zero Line
+        const zeroY = mapY(0);
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.22)';
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(padL, zeroY); ctx.lineTo(w - padR, zeroY); ctx.stroke();
+
+        ctx.font = '500 10px JetBrains Mono, monospace';
+        ctx.textAlign = 'right';
+        ctx.fillStyle = '#64748b';
+        ctx.fillText(`+${limit}`, padL - 6, padT + 7);
+        ctx.fillText('0', padL - 6, zeroY + 3);
+        ctx.fillText(`-${limit}`, padL - 6, h - padB);
+
+        const hist = state.history;
+        if (hist.length < 2) return;
+
+        const series = [
+          { key: 'p', color: '#38bdf8' },
+          { key: 'i', color: '#34d399' },
+          { key: 'd', color: '#c084fc' }
+        ];
+
+        series.forEach(s => {
+          ctx.strokeStyle = s.color;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          for (let i = 0; i < hist.length; i++) {
+            const x = padL + (i / (state.maxHistory - 1)) * plotW;
+            const y = mapY(hist[i][s.key]);
+            if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+          }
+          ctx.stroke();
+        });
+      }
+
+      // =========================================================
+      // 8. UI Telemetry Readouts Update
+      // =========================================================
+      function updateReadouts() {
+        const cfg = MODE_CONFIG[state.mode];
+        const val = getCurrentVal();
+        const err = state.setpoint - val;
+        const errAbs = Math.abs(err);
+
+        el.metricActual.textContent = `${val.toFixed(1)}${cfg.unit}`;
+        el.metricError.textContent = `${err >= 0 ? '+' : ''}${err.toFixed(1)}${cfg.unit}`;
+        el.metricOvershoot.textContent = `${state.stepPeakOvershootPct.toFixed(1)}%`;
+        el.metricSettling.textContent = state.stepSettledTime !== null
+          ? `${state.stepSettledTime.toFixed(2)} s`
+          : (state.stepActive ? 'กำลังเข้าสมดุล...' : '--');
+
+        el.motorLReadout.textContent = `${Math.round(state.motorL)}%`;
+        el.motorRReadout.textContent = `${Math.round(state.motorR)}%`;
+
+        el.termPVal.textContent = state.pTerm.toFixed(1);
+        el.termIVal.textContent = state.iTerm.toFixed(1);
+        el.termDVal.textContent = state.dTerm.toFixed(1);
+
+        // Stability Status Badge
+        const velAbs = Math.abs(state.mode === 'roll' ? state.angVel : state.altVel * 15);
+        const tol = state.mode === 'roll' ? 1.5 : 0.2;
+        if (errAbs <= tol && velAbs < 6) {
+          el.stabilityBadge.textContent = 'ทรงตัวนิ่ง';
+          el.stabilityBadge.className = 'rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-300 ring-1 ring-emerald-500/30';
+          el.statusDot.className = 'h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]';
+        } else if (velAbs > 45 || errAbs > (state.mode === 'roll' ? 35 : 3.5)) {
+          el.stabilityBadge.textContent = 'แกว่งรุนแรง';
+          el.stabilityBadge.className = 'rounded-full bg-rose-500/15 px-2.5 py-0.5 text-xs font-semibold text-rose-300 ring-1 ring-rose-500/35';
+          el.statusDot.className = 'h-2.5 w-2.5 rounded-full bg-rose-400 shadow-[0_0_8px_rgba(251,113,133,0.8)]';
+        } else {
+          el.stabilityBadge.textContent = 'กำลังปรับสมดุล';
+          el.stabilityBadge.className = 'rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-300 ring-1 ring-amber-500/35';
+          el.statusDot.className = 'h-2.5 w-2.5 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)]';
+        }
+      }
+
+      // =========================================================
+      // 9. Main Animation Loop
+      // =========================================================
+      let lastTime = 0;
+      let animId = null;
+
+      function loop(timestamp) {
+        const frameDt = lastTime ? clamp((timestamp - lastTime) / 1000, 0.001, 0.05) : (1 / 60);
+        lastTime = timestamp;
+
+        if (!state.paused) {
+          // 4 physics substeps per frame for numerical stability
+          const substeps = 4;
+          const subDt = frameDt / substeps;
+          for (let i = 0; i < substeps; i++) {
+            physicsSubstep(subDt);
+          }
+
+          state.history.push({
+            sp: state.setpoint,
+            val: getCurrentVal(),
+            p: state.pTerm,
+            i: state.iTerm,
+            d: state.dTerm
+          });
+          if (state.history.length > state.maxHistory) {
+            state.history.shift();
+          }
+        }
+
+        drawDroneScene();
+        drawResponseGraph();
+        drawTermsGraph();
+        updateReadouts();
+
+        animId = requestAnimationFrame(loop);
+      }
+
+      // =========================================================
+      // 10. Event Listeners
+      // =========================================================
+      el.modeRollBtn.addEventListener('click', () => switchMode('roll'));
+      el.modeAltBtn.addEventListener('click', () => switchMode('altitude'));
+
+      el.pauseBtn.addEventListener('click', () => {
+        state.paused = !state.paused;
+        el.pauseIcon.textContent = state.paused ? '▶' : '⏸';
+        el.pauseText.textContent = state.paused ? 'เล่นต่อ' : 'หยุดชั่วคราว';
+      });
+
+      el.resetSimBtn.addEventListener('click', () => {
+        resetDronePhysics(true);
+      });
+
+      // PID Slider <-> Number Input bindings
+      function bindGain(slider, numInput, key) {
+        const update = (rawVal) => {
+          const v = parseFloat(rawVal);
+          if (Number.isNaN(v)) return;
+          state[key] = clamp(v, parseFloat(slider.min), parseFloat(slider.max));
+          slider.value = state[key];
+          numInput.value = state[key];
+        };
+        slider.addEventListener('input', (e) => update(e.target.value));
+        numInput.addEventListener('input', (e) => update(e.target.value));
+      }
+
+      bindGain(el.kpSlider, el.kpNum, 'kp');
+      bindGain(el.kiSlider, el.kiNum, 'ki');
+      bindGain(el.kdSlider, el.kdNum, 'kd');
+
+      // Presets
+      el.presetBtns.forEach(btn => {
+        btn.addEventListener('click', () => applyPreset(btn.dataset.preset));
+      });
+
+      // Setpoint
+      el.spSlider.addEventListener('input', (e) => {
+        const nextSp = parseFloat(e.target.value);
+        startStepTracking(nextSp);
+        state.setpoint = nextSp;
+        syncEnvInputs();
+      });
+
+      el.spCenterBtn.addEventListener('click', () => {
+        const def = MODE_CONFIG[state.mode].spDefault;
+        startStepTracking(def);
+        state.setpoint = def;
+        syncEnvInputs();
+      });
+
+      // Step Test Button
+      el.stepTestBtn.addEventListener('click', () => {
+        if (state.mode === 'roll') {
+          const next = state.setpoint >= 10 ? -15 : 15;
+          startStepTracking(next);
+          state.setpoint = next;
+        } else {
+          const next = state.setpoint >= 6.0 ? 3.5 : 7.0;
+          startStepTracking(next);
+          state.setpoint = next;
+        }
+        syncEnvInputs();
+      });
+
+      // Impulse Buttons
+      el.impulseLeftBtn.addEventListener('click', () => {
+        if (state.mode === 'roll') {
+          state.angVel -= 95;
+        } else {
+          state.altVel -= 4.2;
+        }
+      });
+
+      el.impulseRightBtn.addEventListener('click', () => {
+        if (state.mode === 'roll') {
+          state.angVel += 95;
+        } else {
+          state.altVel += 4.2;
+        }
+      });
+
+      // Wind & Turbulence
+      el.windSlider.addEventListener('input', (e) => {
+        state.steadyWind = parseFloat(e.target.value);
+        syncEnvInputs();
+      });
+
+      el.windZeroBtn.addEventListener('click', () => {
+        state.steadyWind = 0;
+        syncEnvInputs();
+      });
+
+      el.turbulenceToggle.addEventListener('change', (e) => {
+        state.turbulence = e.target.checked;
+      });
+
+      // Graph Controls
+      el.showTermsToggle.addEventListener('change', (e) => {
+        state.showTerms = e.target.checked;
+        el.termsChartSection.classList.toggle('hidden', !state.showTerms);
+        if (state.showTerms) handleResize();
+      });
+
+      el.clearGraphBtn.addEventListener('click', () => {
+        state.history = [];
+      });
+
+      // Guide Accordion
+      el.guideToggleBtn.addEventListener('click', () => {
+        const hidden = el.guideContent.classList.toggle('hidden');
+        el.guideChevron.style.transform = hidden ? 'rotate(-90deg)' : 'rotate(0deg)';
+      });
+
+      // Direct Mouse/Touch Drag on Drone Canvas to push/tilt
+      function getPointerPos(e) {
+        const rect = el.droneCanvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return { x: clientX - rect.left, y: clientY - rect.top };
+      }
+
+      function onPointerDown(e) {
+        state.isDragging = true;
+        const pos = getPointerPos(e);
+        applyDragPos(pos);
+      }
+
+      function onPointerMove(e) {
+        if (!state.isDragging) return;
+        if (e.cancelable) e.preventDefault();
+        applyDragPos(getPointerPos(e));
+      }
+
+      function onPointerUp() {
+        state.isDragging = false;
+      }
+
+      function applyDragPos(pos) {
+        const { w, h } = dims.drone;
+        if (state.mode === 'roll') {
+          const dx = pos.x - w / 2;
+          const dy = pos.y - (h / 2 + 10);
+          let deg = (Math.atan2(dy, dx) * 180) / Math.PI;
+          if (dx < 0) deg = deg > 0 ? deg - 180 : deg + 180;
+          state.angle = clamp(deg, -65, 65);
+          state.angVel = 0;
+        } else {
+          const padTop = 34, padBottom = 34;
+          const norm = 1 - (pos.y - padTop) / (h - padTop - padBottom);
+          state.alt = clamp(norm * 10, 0.4, 9.5);
+          state.altVel = 0;
+        }
+      }
+
+      el.droneCanvas.addEventListener('mousedown', onPointerDown);
+      window.addEventListener('mousemove', onPointerMove);
+      window.addEventListener('mouseup', onPointerUp);
+      el.droneCanvas.addEventListener('touchstart', onPointerDown, { passive: true });
+      window.addEventListener('touchmove', onPointerMove, { passive: false });
+      window.addEventListener('touchend', onPointerUp);
+
+      // Resize & Init
+      window.addEventListener('resize', handleResize);
+      window.addEventListener('load', () => {
+        handleResize();
+        switchMode('roll');
+        if (animId) cancelAnimationFrame(animId);
+        animId = requestAnimationFrame(loop);
+      });
+    })();
+  </script>
+</body>
+</html>
